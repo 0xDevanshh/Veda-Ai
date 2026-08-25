@@ -86,8 +86,8 @@ export default function UploadPage() {
 
   return (
     <AppShell breadcrumb="Exams" collapsed={false}>
-      <div className="mx-auto flex max-w-[900px] flex-col items-center px-6 py-12">
-        <h1 className="text-center text-2xl font-bold text-gray-900 sm:text-3xl">
+      <div className="mx-auto flex max-w-[900px] flex-col items-center px-4 py-8 md:px-6 md:py-12">
+        <h1 className="text-center text-xl font-bold leading-snug text-gray-900 md:text-3xl md:leading-tight">
           Upload{" "}
           <span className="rounded-lg bg-orange-100 px-2 py-1 text-orange-600">
             Question Paper &amp; Answer Sheets
@@ -99,7 +99,7 @@ export default function UploadPage() {
 
         <DecorativeIllustration />
 
-        <div className="mt-8 grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="mt-8 flex w-full flex-col gap-4 md:flex-row md:[&>*]:flex-1">
           <UploadCard
             highlight="Question Paper"
             files={questionPaper ? [questionPaper] : []}
@@ -118,7 +118,7 @@ export default function UploadPage() {
           disabled={!bothSelected || isProcessing}
           onClick={handleStartMapping}
           className={clsx(
-            "mt-8 flex items-center gap-2 rounded-full px-6 py-3 text-sm font-medium transition-colors",
+            "mt-8 flex w-full max-w-[320px] items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-medium transition-colors md:w-auto md:py-3",
             bothSelected && !isProcessing
               ? "bg-black text-white hover:bg-gray-800"
               : "cursor-not-allowed bg-gray-200 text-gray-400"
@@ -128,9 +128,11 @@ export default function UploadPage() {
           <ArrowRight size={16} />
         </button>
 
-        {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+        {error && (
+          <p className="mt-3 text-center text-sm text-red-500">{error}</p>
+        )}
 
-        <p className="mt-3 text-center text-xs text-gray-400">
+        <p className="mt-3 max-w-[420px] text-center text-xs text-gray-400">
           Once both files are uploaded, you&apos;ll able to map answers with
           questions
         </p>
@@ -141,13 +143,30 @@ export default function UploadPage() {
 
 function DecorativeIllustration() {
   return (
-    <div className="relative mt-8 flex h-40 w-40 items-center justify-center">
-      <div className="absolute h-40 w-40 rounded-full bg-orange-50" />
-      <div className="absolute h-32 w-32 rounded-full bg-orange-100/80" />
-      <div className="absolute h-24 w-24 rounded-full bg-orange-200/70" />
-      <div className="relative flex h-14 w-14 items-center justify-center rounded-full bg-gray-300 text-sm font-semibold text-gray-600 ring-4 ring-white">
-        AI
+    <div
+      aria-hidden
+      className="mt-6 flex items-center justify-center gap-3 md:mt-8 md:gap-0"
+    >
+      <div className="relative flex h-28 w-28 shrink-0 items-center justify-center md:h-40 md:w-40">
+        <div className="absolute h-28 w-28 rounded-full bg-orange-50 md:h-40 md:w-40" />
+        <div className="absolute h-[5.5rem] w-[5.5rem] rounded-full bg-orange-100/80 md:h-32 md:w-32" />
+        <div className="absolute h-16 w-16 rounded-full bg-orange-200/70 md:h-24 md:w-24" />
+        <div className="relative flex h-11 w-11 items-center justify-center rounded-full bg-gray-300 text-xs font-semibold text-gray-600 ring-4 ring-white md:h-14 md:w-14 md:text-sm">
+          AI
+        </div>
+
+        {/* Desktop: pill floats over the lower-right of the circle */}
+        <span className="absolute -bottom-1 -right-6 hidden items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200 md:inline-flex">
+          <span className="h-4 w-4 rounded-full bg-orange-200" />
+          Sanket P.
+        </span>
       </div>
+
+      {/* Mobile: pill sits beside the circle so it can't clip off-screen */}
+      <span className="inline-flex max-w-[45vw] items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200 md:hidden">
+        <span className="h-4 w-4 shrink-0 rounded-full bg-orange-200" />
+        <span className="truncate">Sanket P.</span>
+      </span>
     </div>
   );
 }
