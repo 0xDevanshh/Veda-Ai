@@ -3,7 +3,7 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
-import { ArrowRight, Check, MousePointer2, Upload } from "lucide-react";
+import { ArrowRight, Check, Upload } from "lucide-react";
 import clsx from "clsx";
 import AppShell from "@/components/AppShell";
 import { fileToPageImages } from "@/lib/pdf-to-images";
@@ -147,10 +147,6 @@ function DecorativeIllustration() {
       <div className="relative flex h-14 w-14 items-center justify-center rounded-full bg-gray-300 text-sm font-semibold text-gray-600 ring-4 ring-white">
         AI
       </div>
-      <div className="absolute -bottom-2 right-0 flex items-center gap-1 rounded-full bg-yellow-300 px-2.5 py-1 text-xs font-medium text-gray-800 shadow-sm">
-        <MousePointer2 size={12} />
-        Anonymous
-      </div>
     </div>
   );
 }
@@ -206,7 +202,7 @@ function UploadCard({ highlight, files, multiple, onSelect }: UploadCardProps) {
           <p className="text-sm font-medium text-gray-800">
             Upload <span className="text-orange-600">{highlight}</span>
           </p>
-          <p className="text-xs text-gray-400">Max 10MB</p>
+          <p className="text-xs text-gray-400">Max 8MB</p>
         </>
       )}
     </button>
