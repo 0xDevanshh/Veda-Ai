@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, AlertTriangle } from "lucide-react";
+import Image from "next/image";
+import { AlertTriangle } from "lucide-react";
 import AppShell from "@/components/AppShell";
+import starIcon from "../../star_icon.png";
 import { clearPendingSession, loadPendingSession } from "@/lib/pending-session";
 
 export default function ProcessingPage() {
@@ -87,22 +89,13 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 
 function SparkleBurst() {
   return (
-    <div className="relative flex h-20 w-20 items-center justify-center">
-      <Sparkles
-        size={56}
-        className="animate-pulse text-orange-500"
-        strokeWidth={1.5}
-      />
-      <Sparkles
-        size={20}
-        className="absolute -right-1 top-1 animate-pulse text-orange-400 [animation-delay:200ms]"
-        strokeWidth={1.5}
-      />
-      <Sparkles
-        size={14}
-        className="absolute bottom-1 left-0 animate-pulse text-orange-300 [animation-delay:400ms]"
-        strokeWidth={1.5}
-      />
-    </div>
+    <Image
+      src={starIcon}
+      alt=""
+      width={84}
+      height={88}
+      priority
+      className="sparkle-pulse"
+    />
   );
 }
