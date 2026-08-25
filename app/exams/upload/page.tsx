@@ -6,27 +6,28 @@ import { v4 as uuidv4 } from "uuid";
 import { ArrowRight, Check, MousePointer2, Upload } from "lucide-react";
 import clsx from "clsx";
 import AppShell from "@/components/AppShell";
-import { pdfToImages } from "@/lib/pdf-to-image";
+import { fileToPageImages } from "@/lib/pdf-to-images";
 import type { SessionData } from "@/lib/types";
 
 export default function UploadPage() {
   const router = useRouter();
   const [questionPaper, setQuestionPaper] = useState<File | null>(null);
-  const [answerSheet, setAnswerSheet] = useState<File | null>(null);
+  const [answerSheets, setAnswerSheets] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const bothSelected = Boolean(questionPaper && answerSheet);
+  const bothSelected = Boolean(questionPaper && answerSheets.length > 0);
 
   const handleStartMapping = async () => {
-    if (!questionPaper || !answerSheet || isProcessing) return;
+    if (!questionPaper || answerSheets.length === 0 || isProcessing) return;
     setError(null);
     setIsProcessing(true);
     try {
-      const [questionPaperImages, answerSheetImages] = await Promise.all([
-        pdfToImages(questionPaper),
-        pdfToImages(answerSheet),
+      const [questionPaperImages, answerSheetImagesPerFile] = await Promise.all([
+        fileToPageImages(questionPaper),
+        Promise.all(answerSheets.map((file) => fileToPageImages(file))),
       ]);
+      const answerSheetImages = answerSheetImagesPerFile.flat();
 
       const session: SessionData = {
         sessionId: uuidv4(),
@@ -41,7 +42,7 @@ export default function UploadPage() {
       router.push("/exams/processing");
     } catch (err) {
       console.error(err);
-      setError("Could not process one of the PDFs. Please try again.");
+      setError("Could not process one of the files. Please try again.");
       setIsProcessing(false);
     }
   };
@@ -64,13 +65,14 @@ export default function UploadPage() {
         <div className="mt-8 grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
           <UploadCard
             highlight="Question Paper"
-            file={questionPaper}
-            onSelect={setQuestionPaper}
+            files={questionPaper ? [questionPaper] : []}
+            onSelect={(files) => setQuestionPaper(files[0] ?? null)}
           />
           <UploadCard
             highlight="Answer Sheet"
-            file={answerSheet}
-            onSelect={setAnswerSheet}
+            multiple
+            files={answerSheets}
+            onSelect={setAnswerSheets}
           />
         </div>
 
@@ -119,17 +121,20 @@ function DecorativeIllustration() {
 
 interface UploadCardProps {
   highlight: string;
-  file: File | null;
-  onSelect: (file: File) => void;
+  files: File[];
+  multiple?: boolean;
+  onSelect: (files: File[]) => void;
 }
 
-function UploadCard({ highlight, file, onSelect }: UploadCardProps) {
+function UploadCard({ highlight, files, multiple, onSelect }: UploadCardProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0];
-    if (selected) onSelect(selected);
+    const selected = Array.from(e.target.files ?? []);
+    if (selected.length > 0) onSelect(selected);
   };
+
+  const hasFiles = files.length > 0;
 
   return (
     <button
@@ -140,18 +145,21 @@ function UploadCard({ highlight, file, onSelect }: UploadCardProps) {
       <input
         ref={inputRef}
         type="file"
-        accept="application/pdf,.pdf"
+        accept="application/pdf,.pdf,image/png,image/jpeg,.png,.jpg,.jpeg"
+        multiple={multiple}
         className="hidden"
         onChange={handleChange}
       />
 
-      {file ? (
+      {hasFiles ? (
         <>
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
             <Check size={18} className="text-green-600" />
           </div>
           <p className="max-w-full truncate text-sm font-medium text-gray-800">
-            {file.name}
+            {files.length === 1
+              ? files[0].name
+              : `${files.length} files selected`}
           </p>
         </>
       ) : (
