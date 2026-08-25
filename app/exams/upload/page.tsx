@@ -158,17 +158,14 @@ function DecorativeIllustration() {
         />
 
         {/* Desktop: pill floats over the lower-right of the circle */}
-        <span className="absolute -bottom-1 -right-6 hidden items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200 md:inline-flex">
-          <span className="h-4 w-4 rounded-full bg-orange-200" />
-          Sanket P.
-        </span>
+        
       </div>
 
       {/* Mobile: pill sits beside the circle so it can't clip off-screen */}
-      <span className="inline-flex max-w-[45vw] items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200 md:hidden">
-        <span className="h-4 w-4 shrink-0 rounded-full bg-orange-200" />
-        <span className="truncate">Sanket P.</span>
-      </span>
+      
+        
+        
+      
     </div>
   );
 }
