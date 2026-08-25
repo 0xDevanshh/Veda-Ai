@@ -127,14 +127,14 @@ export default function UploadPage() {
           )}
         >
           {isProcessing ? "Processing..." : "Start Mapping"}
-          <ArrowRight size={16} />
+          <ArrowRight size={22} />
         </button>
 
         {error && (
           <p className="mt-3 text-center text-sm text-red-500">{error}</p>
         )}
 
-        <p className="mt-3 max-w-[420px] text-center text-xs text-gray-400">
+        <p className="mt-3 max-w-[420px] text-center text-sm text-gray-400">
           Once both files are uploaded, you&apos;ll able to map answers with
           questions
         </p>
@@ -218,10 +218,10 @@ function UploadCard({ highlight, files, multiple, onSelect }: UploadCardProps) {
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100">
             <Upload size={18} className="text-gray-500" />
           </div>
-          <p className="text-sm font-medium text-gray-800">
+          <p className="text-lg font-medium text-gray-800">
             Upload <span className="text-orange-600">{highlight}</span>
           </p>
-          <p className="text-xs text-gray-400">Max 8MB</p>
+          <p className="text-base text-gray-400">Max 10MB</p>
         </>
       )}
     </button>
