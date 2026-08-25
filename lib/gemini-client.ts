@@ -2,8 +2,16 @@ import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const MODEL = "gemini-2.5-flash";
+const MODEL = "gemini-3.6-flash";
 const MAX_RETRIES = 2;
+
+function parseImageDataUrl(image: string): { mimeType: string; data: string } {
+  const match = image.match(/^data:([^;]+);base64,([\s\S]*)$/);
+  if (!match) {
+    return { mimeType: "image/jpeg", data: image };
+  }
+  return { mimeType: match[1], data: match[2] };
+}
 
 function buildContents(prompt: string, images: string[]) {
   return [
@@ -11,8 +19,8 @@ function buildContents(prompt: string, images: string[]) {
       role: "user",
       parts: [
         { text: prompt },
-        ...images.map((data) => ({
-          inlineData: { mimeType: "image/jpeg", data },
+        ...images.map((image) => ({
+          inlineData: parseImageDataUrl(image),
         })),
       ],
     },

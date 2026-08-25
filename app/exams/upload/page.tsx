@@ -7,6 +7,7 @@ import { ArrowRight, Check, Upload } from "lucide-react";
 import clsx from "clsx";
 import AppShell from "@/components/AppShell";
 import { fileToPageImages } from "@/lib/pdf-to-images";
+import { savePendingSession } from "@/lib/pending-session";
 import type { SessionData } from "@/lib/types";
 
 const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024;
@@ -74,7 +75,7 @@ export default function UploadPage() {
         mappedAnswers: [],
       };
 
-      sessionStorage.setItem("veda-session", JSON.stringify(session));
+      await savePendingSession(session);
       router.push("/exams/processing");
     } catch (err) {
       console.error(err);

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles, AlertTriangle } from "lucide-react";
 import AppShell from "@/components/AppShell";
-import type { SessionData } from "@/lib/types";
+import { clearPendingSession, loadPendingSession } from "@/lib/pending-session";
 
 export default function ProcessingPage() {
   const router = useRouter();
@@ -13,9 +13,8 @@ export default function ProcessingPage() {
   const runProcessing = useCallback(async () => {
     setFailed(false);
     try {
-      const raw = sessionStorage.getItem("veda-session");
-      if (!raw) throw new Error("No session data found");
-      const session: SessionData = JSON.parse(raw);
+      const session = await loadPendingSession();
+      if (!session) throw new Error("No session data found");
 
       const response = await fetch("/api/process", {
         method: "POST",
@@ -29,6 +28,7 @@ export default function ProcessingPage() {
       if (!response.ok) throw new Error("Processing request failed");
 
       const { sessionId } = await response.json();
+      await clearPendingSession();
       router.push(`/exams/result/${sessionId}`);
     } catch (err) {
       console.error(err);
