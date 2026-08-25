@@ -16,7 +16,7 @@ export default function ResultPage({
 
   return (
     <AppShell breadcrumb="Exams" collapsed>
-      <ResultView session={session} />
+      <ResultView sessionId={params.sessionId} />
     </AppShell>
   );
 }

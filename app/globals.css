@@ -25,3 +25,18 @@ body {
     text-wrap: balance;
   }
 }
+
+@keyframes highlight-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.answer-highlight-in {
+  animation: highlight-in 160ms ease-out;
+}

@@ -9,6 +9,13 @@ import AppShell from "@/components/AppShell";
 import { fileToPageImages } from "@/lib/pdf-to-images";
 import type { SessionData } from "@/lib/types";
 
+const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024;
+const MAX_TOTAL_PAGES = 15;
+
+function oversizedFile(files: File[]): File | undefined {
+  return files.find((file) => file.size > MAX_FILE_SIZE_BYTES);
+}
+
 export default function UploadPage() {
   const router = useRouter();
   const [questionPaper, setQuestionPaper] = useState<File | null>(null);
@@ -17,6 +24,26 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null);
 
   const bothSelected = Boolean(questionPaper && answerSheets.length > 0);
+
+  const handleSelectQuestionPaper = (files: File[]) => {
+    const oversized = oversizedFile(files);
+    if (oversized) {
+      setError(`"${oversized.name}" is larger than 8MB. Please upload a smaller file.`);
+      return;
+    }
+    setError(null);
+    setQuestionPaper(files[0] ?? null);
+  };
+
+  const handleSelectAnswerSheets = (files: File[]) => {
+    const oversized = oversizedFile(files);
+    if (oversized) {
+      setError(`"${oversized.name}" is larger than 8MB. Please upload a smaller file.`);
+      return;
+    }
+    setError(null);
+    setAnswerSheets(files);
+  };
 
   const handleStartMapping = async () => {
     if (!questionPaper || answerSheets.length === 0 || isProcessing) return;
@@ -28,6 +55,15 @@ export default function UploadPage() {
         Promise.all(answerSheets.map((file) => fileToPageImages(file))),
       ]);
       const answerSheetImages = answerSheetImagesPerFile.flat();
+
+      const totalPages = questionPaperImages.length + answerSheetImages.length;
+      if (totalPages > MAX_TOTAL_PAGES) {
+        setError(
+          `These files add up to ${totalPages} pages — please keep uploads to ${MAX_TOTAL_PAGES} pages or fewer.`
+        );
+        setIsProcessing(false);
+        return;
+      }
 
       const session: SessionData = {
         sessionId: uuidv4(),
@@ -66,13 +102,13 @@ export default function UploadPage() {
           <UploadCard
             highlight="Question Paper"
             files={questionPaper ? [questionPaper] : []}
-            onSelect={(files) => setQuestionPaper(files[0] ?? null)}
+            onSelect={handleSelectQuestionPaper}
           />
           <UploadCard
             highlight="Answer Sheet"
             multiple
             files={answerSheets}
-            onSelect={setAnswerSheets}
+            onSelect={handleSelectAnswerSheets}
           />
         </div>
 

@@ -32,10 +32,82 @@ function scoreBadgeClasses(verdict: string): string {
 }
 
 interface ResultViewProps {
-  session: SessionData;
+  sessionId: string;
 }
 
-export default function ResultView({ session }: ResultViewProps) {
+export default function ResultView({ sessionId }: ResultViewProps) {
+  const [session, setSession] = useState<SessionData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSession(null);
+    setError(null);
+
+    fetch(`/api/session/${sessionId}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Session not found");
+        return res.json();
+      })
+      .then((data: SessionData) => {
+        if (!cancelled) setSession(data);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Could not load this result. Please try again.");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center p-4">
+        <p className="text-sm text-red-500">{error}</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <ResultSkeleton />;
+  }
+
+  return <ResultViewContent session={session} />;
+}
+
+function ResultSkeleton() {
+  return (
+    <div className="flex h-full min-h-0 gap-4 p-4">
+      <div className="flex h-full min-h-0 w-[55%] flex-col rounded-xl bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div className="h-4 w-64 animate-pulse rounded bg-gray-200" />
+          <div className="h-7 w-24 animate-pulse rounded-full bg-gray-200" />
+        </div>
+        <div className="mt-4 flex flex-col gap-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 rounded-lg px-4 py-3">
+              <div className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-gray-200" />
+              <div className="h-4 flex-1 animate-pulse rounded bg-gray-200" />
+              <div className="h-6 w-12 shrink-0 animate-pulse rounded-full bg-gray-200" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex h-full min-h-0 w-[45%] flex-col rounded-xl bg-white shadow-sm">
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div className="h-4 w-24 animate-pulse rounded bg-gray-200" />
+          <div className="h-6 w-40 animate-pulse rounded-full bg-gray-200" />
+        </div>
+        <div className="flex-1 p-5">
+          <div className="h-full w-full animate-pulse rounded-lg bg-gray-200" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResultViewContent({ session }: { session: SessionData }) {
   const questionRows = useMemo(
     () =>
       session.mappedAnswers
@@ -107,6 +179,7 @@ export default function ResultView({ session }: ResultViewProps) {
   );
 
   const selectedLabel = selected?.question ? `Q${selected.question.number}` : "?";
+  const hasQuestions = session.questions.length > 0;
 
   return (
     <div className="flex h-full min-h-0 gap-4 p-4">
@@ -115,14 +188,22 @@ export default function ResultView({ session }: ResultViewProps) {
           <h2 className="text-base font-bold text-gray-900">
             Extracted Questions (from question paper)
           </h2>
-          <button
-            type="button"
-            onClick={toggleExpandAll}
-            className="rounded-full border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-          >
-            {allExpanded ? "Collapse All" : "Expand All"}
-          </button>
+          {hasQuestions && (
+            <button
+              type="button"
+              onClick={toggleExpandAll}
+              className="rounded-full border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              {allExpanded ? "Collapse All" : "Expand All"}
+            </button>
+          )}
         </div>
+
+        {!hasQuestions && (
+          <div className="mt-4 rounded-lg bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
+            No questions detected — try re-uploading a clearer scan.
+          </div>
+        )}
 
         <div className="mt-4 flex flex-col gap-2">
           {questionRows.map((m) => {
@@ -317,8 +398,8 @@ export default function ResultView({ session }: ResultViewProps) {
               )}
               {currentPageRegions.map((region, index) => (
                 <div
-                  key={index}
-                  className="absolute border-2 border-green-500 bg-green-400/20"
+                  key={`${selectedId}-${index}`}
+                  className="answer-highlight-in absolute border-2 border-green-500 bg-green-400/20"
                   style={{
                     left: `${region.xmin / 10}%`,
                     top: `${region.ymin / 10}%`,
