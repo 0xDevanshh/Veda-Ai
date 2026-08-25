@@ -78,8 +78,8 @@ export default function ResultView({ sessionId }: ResultViewProps) {
 
 function ResultSkeleton() {
   return (
-    <div className="flex h-full min-h-0 gap-4 p-4">
-      <div className="flex h-full min-h-0 w-[55%] flex-col rounded-xl bg-white p-5 shadow-sm">
+    <div className="flex h-full min-h-0 flex-col gap-4 p-4 md:flex-row">
+      <div className="flex min-h-0 w-full flex-1 flex-col rounded-xl bg-white p-5 shadow-sm md:h-full md:w-[55%] md:flex-none">
         <div className="flex items-center justify-between">
           <div className="h-4 w-64 animate-pulse rounded bg-gray-200" />
           <div className="h-7 w-24 animate-pulse rounded-full bg-gray-200" />
@@ -94,7 +94,7 @@ function ResultSkeleton() {
           ))}
         </div>
       </div>
-      <div className="flex h-full min-h-0 w-[45%] flex-col rounded-xl bg-white shadow-sm">
+      <div className="hidden h-full min-h-0 w-[45%] flex-col rounded-xl bg-white shadow-sm md:flex">
         <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-5 py-4">
           <div className="h-4 w-24 animate-pulse rounded bg-gray-200" />
           <div className="h-6 w-40 animate-pulse rounded-full bg-gray-200" />
@@ -126,6 +126,8 @@ function ResultViewContent({ session }: { session: SessionData }) {
   const [unmatchedOpen, setUnmatchedOpen] = useState(false);
   const [zoom, setZoom] = useState(100);
   const [currentPage, setCurrentPage] = useState(0);
+  // Only meaningful below md, where the two panels are tabbed instead of side by side.
+  const [activeTab, setActiveTab] = useState<"questions" | "answer">("questions");
 
   const allExpanded =
     questionRows.length > 0 && questionRows.every((m) => expandedIds.has(rowId(m)));
@@ -144,6 +146,9 @@ function ResultViewContent({ session }: { session: SessionData }) {
       } else {
         next.add(id);
         setSelectedId(id);
+        // Below md this reveals the highlight without a second tap; at md and
+        // above both panels are already visible, so it has no visible effect.
+        setActiveTab("answer");
       }
       return next;
     });
@@ -182,8 +187,38 @@ function ResultViewContent({ session }: { session: SessionData }) {
   const hasQuestions = session.questions.length > 0;
 
   return (
-    <div className="flex h-full min-h-0 gap-4 p-4">
-      <div className="flex h-full min-h-0 w-[55%] flex-col overflow-y-auto rounded-xl bg-white p-5 shadow-sm">
+    <div className="flex h-full min-h-0 flex-col gap-3 p-4 md:flex-row md:gap-4">
+      {/* Mobile-only tab switcher */}
+      <div className="flex shrink-0 items-center gap-1 self-center rounded-full bg-gray-100 p-1 md:hidden">
+        {(
+          [
+            { key: "questions", label: "Questions" },
+            { key: "answer", label: "Answer Sheet" },
+          ] as const
+        ).map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setActiveTab(tab.key)}
+            aria-pressed={activeTab === tab.key}
+            className={clsx(
+              "rounded-full px-4 py-2 text-sm font-medium transition-colors",
+              activeTab === tab.key
+                ? "bg-black text-white"
+                : "bg-transparent text-gray-500"
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div
+        className={clsx(
+          "min-h-0 w-full flex-1 flex-col overflow-y-auto rounded-xl bg-white p-5 shadow-sm md:flex md:h-full md:w-[55%] md:flex-none",
+          activeTab === "questions" ? "flex" : "hidden"
+        )}
+      >
         <div className="flex items-center justify-between">
           <h2 className="text-base font-bold text-gray-900">
             Extracted Questions (from question paper)
@@ -334,8 +369,33 @@ function ResultViewContent({ session }: { session: SessionData }) {
         </div>
       </div>
 
-      <div className="flex h-full min-h-0 w-[45%] flex-col overflow-y-auto rounded-xl bg-white shadow-sm">
-        <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-5 py-4">
+      <div
+        className={clsx(
+          "min-h-0 w-full flex-1 flex-col overflow-y-auto rounded-xl bg-white shadow-sm md:flex md:h-full md:w-[45%] md:flex-none",
+          activeTab === "answer" ? "flex" : "hidden"
+        )}
+      >
+        {/* Mobile-only back-reference to the highlighted question */}
+        {selected && (
+          <button
+            type="button"
+            onClick={() => setActiveTab("questions")}
+            className="flex shrink-0 items-center gap-2 border-b border-gray-100 px-5 py-2.5 text-left md:hidden"
+          >
+            <span className="rounded-full bg-gray-900 px-2 py-0.5 text-xs font-bold text-white">
+              {selectedLabel}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-xs text-gray-500">
+              Highlighted below
+            </span>
+            <span className="flex shrink-0 items-center gap-0.5 text-xs font-medium text-gray-600">
+              <ChevronLeft size={14} />
+              Questions
+            </span>
+          </button>
+        )}
+
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-5 py-4">
           <h2 className="text-base font-bold text-gray-900">Answer Sheet</h2>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5 rounded-full border border-gray-200 px-1.5 py-1">
