@@ -2,6 +2,8 @@
 
 import { useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
+import ladyIllustration from "@/app/lady.png";
 import { v4 as uuidv4 } from "uuid";
 import { ArrowRight, Check, Upload } from "lucide-react";
 import clsx from "clsx";
@@ -148,12 +150,12 @@ function DecorativeIllustration() {
       className="mt-6 flex items-center justify-center gap-3 md:mt-8 md:gap-0"
     >
       <div className="relative flex h-28 w-28 shrink-0 items-center justify-center md:h-40 md:w-40">
-        <div className="absolute h-28 w-28 rounded-full bg-orange-50 md:h-40 md:w-40" />
-        <div className="absolute h-[5.5rem] w-[5.5rem] rounded-full bg-orange-100/80 md:h-32 md:w-32" />
-        <div className="absolute h-16 w-16 rounded-full bg-orange-200/70 md:h-24 md:w-24" />
-        <div className="relative flex h-11 w-11 items-center justify-center rounded-full bg-gray-300 text-xs font-semibold text-gray-600 ring-4 ring-white md:h-14 md:w-14 md:text-sm">
-          AI
-        </div>
+        <Image
+          src={ladyIllustration}
+          alt=""
+          priority
+          className="h-full w-full object-contain"
+        />
 
         {/* Desktop: pill floats over the lower-right of the circle */}
         <span className="absolute -bottom-1 -right-6 hidden items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200 md:inline-flex">
