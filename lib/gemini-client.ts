@@ -23,6 +23,7 @@ export async function callGeminiJSON(
   prompt: string,
   images: string[],
   schemaHint: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> {
   let currentPrompt = `${prompt}\n\n${schemaHint}`;
   let lastError: unknown;

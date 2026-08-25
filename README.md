@@ -16,6 +16,14 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Environment Variables
+
+This project calls the Gemini API for question/answer extraction and grading. Set the following in `.env.local` (and in your Vercel project's Environment Variables settings for deployment):
+
+```bash
+GEMINI_API_KEY=your-gemini-api-key
+```
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
