@@ -34,6 +34,14 @@ export interface MappedAnswer {
   };
 }
 
+export interface SessionSummary {
+  totalAwarded: number;
+  totalMax: number;
+  answeredCount: number;
+  unansweredCount: number;
+  unmatchedAnswerCount: number;
+}
+
 export interface SessionData {
   sessionId: string;
   questionPaperImages: string[];
@@ -41,6 +49,7 @@ export interface SessionData {
   questions: Question[];
   extractedAnswers: ExtractedAnswer[];
   mappedAnswers: MappedAnswer[];
+  summary?: SessionSummary;
   overallFeedback?: string;
   totalScore?: { awarded: number; max: number };
 }
