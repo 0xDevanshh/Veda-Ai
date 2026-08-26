@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildMappedAnswers } from "@/lib/match-answers";
+import { AIBusyError, RATE_LIMIT_WINDOW_FULL } from "@/lib/gemini-client";
 import type { ExtractedAnswer, Question } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -20,6 +21,12 @@ export async function POST(request: NextRequest) {
     const { mapped } = await buildMappedAnswers(questions, answers);
     return NextResponse.json({ mapped });
   } catch (error) {
+    if (
+      error instanceof AIBusyError ||
+      (error instanceof Error && error.message === RATE_LIMIT_WINDOW_FULL)
+    ) {
+      return NextResponse.json({ error: "AI_BUSY" }, { status: 503 });
+    }
     console.error("map-answers failed", error);
     return NextResponse.json(
       { error: "Failed to map answers to questions" },

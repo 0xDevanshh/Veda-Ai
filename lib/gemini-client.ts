@@ -38,6 +38,18 @@ const MAX_WINDOW_WAIT_MS = 15_000;
 
 export const RATE_LIMIT_WINDOW_FULL = "RATE_LIMIT_WINDOW_FULL";
 
+/**
+ * Every attempt failed for a capacity reason (503 high demand or 429 quota) —
+ * never a malformed response or bad request. Callers surface this as "try
+ * again shortly" rather than a hard error, since the request itself was fine.
+ */
+export class AIBusyError extends Error {
+  constructor(message = "AI model is receiving high demand") {
+    super(message);
+    this.name = "AIBusyError";
+  }
+}
+
 const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
   Promise.race([
     promise,
@@ -173,6 +185,9 @@ export async function callGeminiJSON<T = unknown>(
   schemaHint: string
 ): Promise<T> {
   let lastError: unknown = null;
+  // Stays true only while every failure seen is a capacity failure (503/429).
+  // Any parse failure, 404, or other real error clears it for good.
+  let allFailuresWereCapacity = true;
 
   for (const model of MODEL_FALLBACK_CHAIN) {
     let jsonRetries = 0;
@@ -187,6 +202,7 @@ export async function callGeminiJSON<T = unknown>(
           return JSON.parse(text.replace(/```json|```/g, "").trim()) as T;
         } catch {
           jsonRetries++;
+          allFailuresWereCapacity = false;
           currentPrompt = `${prompt}\n\nReturn ONLY valid JSON matching the schema: ${schemaHint}. No markdown fences, no preamble.`;
           continue;
         }
@@ -214,6 +230,7 @@ export async function callGeminiJSON<T = unknown>(
         // Retrying a model this key can't use just burns the time budget.
         if (isModelUnavailableError(err)) {
           console.log(`[gemini] ${model} unavailable to this key — next model`);
+          allFailuresWereCapacity = false;
           break;
         }
 
@@ -232,6 +249,7 @@ export async function callGeminiJSON<T = unknown>(
 
         if (!isRateLimitError(err)) {
           jsonRetries++;
+          allFailuresWereCapacity = false;
           continue;
         }
 
@@ -247,6 +265,13 @@ export async function callGeminiJSON<T = unknown>(
       }
     }
     console.log(`[gemini] exhausted retries on ${model}, falling back to next model`);
+  }
+
+  // Purely a capacity problem: the request was well formed and would likely
+  // succeed later, so callers can invite a retry instead of reporting a fault.
+  if (allFailuresWereCapacity) {
+    console.error("[gemini] all models busy (503/429 only) — surfacing AIBusyError");
+    throw new AIBusyError();
   }
 
   throw new Error(
