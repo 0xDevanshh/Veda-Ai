@@ -8,6 +8,26 @@ const callTimestamps: number[] = [];
 const MAX_CALLS_PER_WINDOW = 5;
 const WINDOW_MS = 60_000;
 
+/** Hard ceiling on a single Gemini request, well inside the function's 60s limit. */
+const CALL_TIMEOUT_MS = 25_000;
+
+/**
+ * Longest wait the sliding window may impose inside a request. Waiting longer
+ * than this burns time budget the serverless function needs for the call itself,
+ * so we fail fast and let the caller return a 503 instead.
+ */
+const MAX_WINDOW_WAIT_MS = 15_000;
+
+export const RATE_LIMIT_WINDOW_FULL = "RATE_LIMIT_WINDOW_FULL";
+
+const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
+  Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error("gemini call timed out")), ms)
+    ),
+  ]);
+
 async function respectSlidingWindow(): Promise<void> {
   const now = Date.now();
   while (callTimestamps.length && now - callTimestamps[0] > WINDOW_MS) {
@@ -16,6 +36,14 @@ async function respectSlidingWindow(): Promise<void> {
   if (callTimestamps.length >= MAX_CALLS_PER_WINDOW) {
     const oldest = callTimestamps[0];
     const waitMs = WINDOW_MS - (now - oldest) + 100;
+    if (waitMs > MAX_WINDOW_WAIT_MS) {
+      console.log(
+        `[gemini] sliding window full — would need ${(waitMs / 1000).toFixed(
+          1
+        )}s, over the ${MAX_WINDOW_WAIT_MS / 1000}s cap; failing fast`
+      );
+      throw new Error(RATE_LIMIT_WINDOW_FULL);
+    }
     if (waitMs > 0) {
       console.log(`[gemini] sliding window full — waiting ${(waitMs / 1000).toFixed(1)}s`);
       await new Promise((r) => setTimeout(r, waitMs));
@@ -74,11 +102,14 @@ async function callOneModel(
   await respectSlidingWindow();
   callTimestamps.push(Date.now());
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: [{ role: "user", parts }],
-    config: { responseMimeType: "application/json" },
-  });
+  const response = await withTimeout(
+    ai.models.generateContent({
+      model,
+      contents: [{ role: "user", parts }],
+      config: { responseMimeType: "application/json" },
+    }),
+    CALL_TIMEOUT_MS
+  );
 
   return response.text ?? "";
 }
@@ -107,6 +138,12 @@ export async function callGeminiJSON<T = unknown>(
         }
       } catch (err: unknown) {
         lastError = err;
+
+        // Nothing to retry against: every model shares one window, and waiting
+        // it out would exceed the function's budget. Let the route return a 503.
+        if (err instanceof Error && err.message === RATE_LIMIT_WINDOW_FULL) {
+          throw err;
+        }
 
         if (!isRateLimitError(err)) {
           jsonRetries++;

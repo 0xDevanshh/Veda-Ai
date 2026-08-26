@@ -2,11 +2,12 @@ const RENDER_SCALE = 2.0;
 
 // Scans are photographic content: JPEG is dramatically smaller than PNG here, which
 // keeps both the browser-side handoff and the inline-data Gemini request manageable.
-const JPEG_QUALITY = 0.8;
+const JPEG_QUALITY = 0.85;
 
-// Cap for directly-uploaded photos, which can otherwise be many megapixels straight
-// off a phone camera. Comfortably above what the model needs to read handwriting.
-const MAX_IMAGE_DIMENSION = 2200;
+// Longer-edge cap applied to every exported page — rendered PDF pages and
+// directly-uploaded photos alike. Smaller payloads keep the inline-data Gemini
+// request well inside the serverless function's time budget.
+const MAX_IMAGE_DIMENSION = 1600;
 
 // Worker script is pdfjs-dist/build/pdf.worker.min.mjs, copied into public/
 // so Next's production build doesn't try to minify the ESM worker file itself.
@@ -44,6 +45,21 @@ function createCanvas(width: number, height: number) {
   return { canvas, context };
 }
 
+/**
+ * Export as JPEG, asserting the browser actually honoured the format — an
+ * unsupported mime type makes toDataURL silently fall back to PNG, which would
+ * quietly undo the size win.
+ */
+function exportJpeg(canvas: HTMLCanvasElement): string {
+  const dataUrl = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+  if (!dataUrl.startsWith("data:image/jpeg")) {
+    throw new Error(
+      `Expected a JPEG data URL, got "${dataUrl.slice(0, 20)}..." — cannot export page`
+    );
+  }
+  return dataUrl;
+}
+
 async function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -63,11 +79,20 @@ async function pdfToPageImages(file: File): Promise<string[]> {
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum);
-    const viewport = page.getViewport({ scale: RENDER_SCALE });
+
+    // Clamp the render scale so the longer edge lands at MAX_IMAGE_DIMENSION.
+    // Rendering straight to the target size beats rendering large and then
+    // downscaling: same result, less memory, and no resampling pass.
+    const unscaled = page.getViewport({ scale: 1 });
+    const scale = Math.min(
+      RENDER_SCALE,
+      MAX_IMAGE_DIMENSION / Math.max(unscaled.width, unscaled.height)
+    );
+    const viewport = page.getViewport({ scale });
     const { canvas, context } = createCanvas(viewport.width, viewport.height);
 
     await page.render({ canvas, canvasContext: context, viewport }).promise;
-    images.push(canvas.toDataURL("image/jpeg", JPEG_QUALITY));
+    images.push(exportJpeg(canvas));
   }
 
   return images;
@@ -84,7 +109,7 @@ async function imageFileToPageImage(file: File): Promise<string> {
 
   const { canvas, context } = createCanvas(width, height);
   context.drawImage(image, 0, 0, width, height);
-  return canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+  return exportJpeg(canvas);
 }
 
 export async function fileToPageImages(file: File): Promise<string[]> {
