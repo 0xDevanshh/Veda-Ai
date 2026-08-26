@@ -118,6 +118,17 @@ function isModelUnavailableError(err: unknown): boolean {
   return status === 404 || gErr.error?.status === "NOT_FOUND";
 }
 
+/**
+ * Transient server-side congestion. Unlike a 429 quota wall — which will still
+ * be there in a few seconds, so the right move is a different model — a 503
+ * usually clears on its own, making a short backoff on the SAME model worthwhile.
+ */
+function isTransientError(err: unknown): boolean {
+  const gErr = err as GeminiApiError;
+  const status = gErr.error?.code ?? gErr.status;
+  return status === 503 || gErr.error?.status === "UNAVAILABLE";
+}
+
 function isRateLimitError(err: unknown): boolean {
   const gErr = err as GeminiApiError;
   const status = gErr.error?.code ?? gErr.status;
@@ -166,9 +177,10 @@ export async function callGeminiJSON<T = unknown>(
   for (const model of MODEL_FALLBACK_CHAIN) {
     let jsonRetries = 0;
     let rateLimitRetries = 0;
+    let transientRetries = 0;
     let currentPrompt = prompt;
 
-    while (jsonRetries < 2 && rateLimitRetries < 3) {
+    while (jsonRetries < 2 && rateLimitRetries < 3 && transientRetries < 3) {
       try {
         const text = await callOneModel(model, currentPrompt, images);
         try {
@@ -203,6 +215,19 @@ export async function callGeminiJSON<T = unknown>(
         if (isModelUnavailableError(err)) {
           console.log(`[gemini] ${model} unavailable to this key — next model`);
           break;
+        }
+
+        // Checked before the jsonRetries fallthrough: a 503 is a service
+        // hiccup, not a malformed response, and re-prompting won't help.
+        if (isTransientError(err)) {
+          transientRetries++;
+          const backoffMs = 2000 * 2 ** (transientRetries - 1);
+          console.log(
+            `[gemini] 503 on ${model} — waiting ${backoffMs / 1000}s, ` +
+              `transient retry attempt ${transientRetries}/3`
+          );
+          await new Promise((r) => setTimeout(r, backoffMs));
+          continue;
         }
 
         if (!isRateLimitError(err)) {
