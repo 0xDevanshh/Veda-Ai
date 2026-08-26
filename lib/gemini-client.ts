@@ -7,37 +7,15 @@ const MODEL = "gemini-3.6-flash";
 const MAX_RETRIES = 2;
 /** Retries for 429 / RESOURCE_EXHAUSTED specifically — 5 attempts total. */
 const MAX_RATE_LIMIT_RETRIES = 4;
-/** Minimum gap between the START of any two Gemini calls, app-wide. */
-const MIN_CALL_GAP_MS = 13_000;
+/**
+ * Only used when a 429 arrives without a RetryInfo hint. Throttling is purely
+ * reactive — calls fire immediately and a wait is introduced for one call only
+ * after that call is itself rate limited.
+ */
+const FALLBACK_RETRY_DELAY_MS = 2_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Shared throttle. Every call to callGeminiJSON chains onto `queueTail`, so
- * requests fire one at a time with at least MIN_CALL_GAP_MS between starts —
- * across the whole app, not per call site.
- */
-let queueTail: Promise<void> = Promise.resolve();
-let lastCallTime = 0;
-
-function acquireCallSlot(): Promise<void> {
-  const slot = queueTail.then(async () => {
-    const waitMs = MIN_CALL_GAP_MS - (Date.now() - lastCallTime);
-    if (waitMs > 0) {
-      console.log(
-        `[gemini] queued — waiting ${(waitMs / 1000).toFixed(1)}s to respect the ${
-          MIN_CALL_GAP_MS / 1000
-        }s gap between calls`
-      );
-      await sleep(waitMs);
-    }
-    lastCallTime = Date.now();
-  });
-  // Keep the chain alive even if a waiter is cancelled upstream.
-  queueTail = slot.catch(() => {});
-  return slot;
 }
 
 /** Pull the API's structured error body out of whatever the SDK threw. */
@@ -120,7 +98,6 @@ export async function callGeminiJSON(
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    await acquireCallSlot();
     attempts++;
 
     try {
@@ -150,19 +127,16 @@ export async function callGeminiJSON(
 
       if (isRateLimitError(error)) {
         if (rateLimitRetries++ >= MAX_RATE_LIMIT_RETRIES) break;
+        // This wait applies to this call only — concurrent calls are untouched
+        // and keep running unless they get rate limited themselves.
         const retryDelayMs = parseRetryDelayMs(error);
-        if (retryDelayMs !== null) {
-          console.log(
-            `[gemini] rate limited — server asked for ${(retryDelayMs / 1000).toFixed(
-              2
-            )}s, retry ${rateLimitRetries}/${MAX_RATE_LIMIT_RETRIES}`
-          );
-          await sleep(retryDelayMs);
-        } else {
-          console.log(
-            `[gemini] rate limited — no RetryInfo in response, retry ${rateLimitRetries}/${MAX_RATE_LIMIT_RETRIES} after the queue gap`
-          );
-        }
+        const waitMs = retryDelayMs ?? FALLBACK_RETRY_DELAY_MS;
+        console.log(
+          `[gemini] rate limited — waiting ${(waitMs / 1000).toFixed(2)}s (${
+            retryDelayMs !== null ? "server RetryInfo" : "no RetryInfo, fallback"
+          }), retry ${rateLimitRetries}/${MAX_RATE_LIMIT_RETRIES}`
+        );
+        await sleep(waitMs);
         continue;
       }
 
