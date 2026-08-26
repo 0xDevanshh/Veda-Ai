@@ -49,7 +49,29 @@ export async function gradeAnswers(
   }
 
   const prompt = buildGradingPrompt(gradable.map((g) => g.entry));
-  const raw = await callGeminiJSON(prompt, [], GRADING_SCHEMA_HINT);
+
+  let raw: unknown;
+  try {
+    raw = await callGeminiJSON(prompt, [], GRADING_SCHEMA_HINT);
+  } catch (error) {
+    // Every model in the chain failed. These answers exist and may well be
+    // correct — scoring them 0/incorrect would be a wrong grade, not a missing
+    // one — so mark them ungraded and let the teacher retry.
+    console.error("gradeAnswers: all models failed, marking batch ungraded", error);
+    for (const { entry, index } of gradable) {
+      result[index] = {
+        ...entry,
+        grading: {
+          marksAwarded: 0,
+          maxMarks: entry.question!.maxMarks ?? 10,
+          verdict: "ungraded",
+          feedback:
+            "Grading unavailable — AI service was unreachable, try regenerating.",
+        },
+      };
+    }
+    return result;
+  }
 
   if (!Array.isArray(raw)) {
     throw new Error("gradeAnswers: expected Gemini to return a JSON array");
