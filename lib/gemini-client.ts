@@ -8,7 +8,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 // gemini-flash-latest first: it doesn't carry the tight per-day free-tier cap
 // that makes a failed gemini-3.6-flash attempt expensive. 3.6 stays as a real
 // fallback for when flash-latest is rate limited or returns 503.
-const MODEL_FALLBACK_CHAIN = ["gemini-flash-latest", "gemini-3.6-flash"];
+const MODEL_FALLBACK_CHAIN = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-3.6-flash"];
 
 // Keyed by model name: each model has its own quota bucket, so usage of
 // gemini-2.5-flash must not block a fallback model that hasn't been called at
@@ -27,7 +27,22 @@ function timestampsFor(model: string): number[] {
 }
 
 /** Hard ceiling on a single Gemini request, well inside the function's 60s limit. */
-const CALL_TIMEOUT_MS = 25_000;
+const CALL_TIMEOUT_MS = 12_000;
+
+/**
+ * Whole-call budget. Once this much time has gone by, starting another attempt
+ * risks the platform's own 60s cutoff, so we stop and report the service as busy.
+ */
+const OVERALL_DEADLINE_MS = 45_000;
+
+/** Retries allowed after a hard timeout before giving up on this model. */
+const MAX_TIMEOUT_RETRIES = 1;
+
+const TIMEOUT_MESSAGE = "gemini call timed out";
+
+function isTimeoutError(err: unknown): boolean {
+  return err instanceof Error && err.message === TIMEOUT_MESSAGE;
+}
 
 /**
  * Longest wait the sliding window may impose inside a request. Waiting longer
@@ -54,7 +69,7 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
   Promise.race([
     promise,
     new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error("gemini call timed out")), ms)
+      setTimeout(() => reject(new Error(TIMEOUT_MESSAGE)), ms)
     ),
   ]);
 
@@ -184,18 +199,36 @@ export async function callGeminiJSON<T = unknown>(
   images: string[],
   schemaHint: string
 ): Promise<T> {
+  const functionStartTime = Date.now();
   let lastError: unknown = null;
-  // Stays true only while every failure seen is a capacity failure (503/429).
-  // Any parse failure, 404, or other real error clears it for good.
+  // Stays true only while every failure seen is a capacity failure (503/429 —
+  // and timeouts, which are congestion in practice). A parse failure or other
+  // real error clears it for good.
   let allFailuresWereCapacity = true;
 
   for (const model of MODEL_FALLBACK_CHAIN) {
     let jsonRetries = 0;
     let rateLimitRetries = 0;
     let transientRetries = 0;
+    let timeoutRetries = 0;
     let currentPrompt = prompt;
 
-    while (jsonRetries < 2 && rateLimitRetries < 3 && transientRetries < 3) {
+    while (
+      jsonRetries < 2 &&
+      rateLimitRetries < 3 &&
+      transientRetries < 3 &&
+      timeoutRetries <= MAX_TIMEOUT_RETRIES
+    ) {
+      const elapsed = Date.now() - functionStartTime;
+      if (elapsed > OVERALL_DEADLINE_MS) {
+        console.error(
+          `[gemini] ${(elapsed / 1000).toFixed(1)}s elapsed, past the ${
+            OVERALL_DEADLINE_MS / 1000
+          }s budget — stopping instead of trying further models`
+        );
+        throw new AIBusyError();
+      }
+
       try {
         const text = await callOneModel(model, currentPrompt, images);
         try {
@@ -228,10 +261,26 @@ export async function callGeminiJSON<T = unknown>(
         }
 
         // Retrying a model this key can't use just burns the time budget.
+        // Deliberately does NOT clear allFailuresWereCapacity: a model this key
+        // can't reach never participates, so it shouldn't decide whether the run
+        // was a capacity problem. Otherwise one dead model at the head of the
+        // chain would suppress AIBusyError for every request.
         if (isModelUnavailableError(err)) {
           console.log(`[gemini] ${model} unavailable to this key — next model`);
-          allFailuresWereCapacity = false;
           break;
+        }
+
+        // A hung call gets one more shot, then we move on rather than spending
+        // another 12s of the budget on a model that isn't responding.
+        if (isTimeoutError(err)) {
+          timeoutRetries++;
+          console.log(
+            `[gemini] timeout on ${model} after ${CALL_TIMEOUT_MS / 1000}s — ` +
+              (timeoutRetries <= MAX_TIMEOUT_RETRIES
+                ? `retrying once (${timeoutRetries}/${MAX_TIMEOUT_RETRIES})`
+                : "next model")
+          );
+          continue;
         }
 
         // Checked before the jsonRetries fallthrough: a 503 is a service
