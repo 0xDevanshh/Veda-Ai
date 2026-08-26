@@ -8,7 +8,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 // gemini-flash-latest first: it doesn't carry the tight per-day free-tier cap
 // that makes a failed gemini-3.6-flash attempt expensive. 3.6 stays as a real
 // fallback for when flash-latest is rate limited or returns 503.
-const MODEL_FALLBACK_CHAIN = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-3.6-flash"];
+const MODEL_FALLBACK_CHAIN = ["gemini-3.6-flash","gemini-flash-latest", "gemini-2.5-flash"];
 
 // Keyed by model name: each model has its own quota bucket, so usage of
 // gemini-2.5-flash must not block a fallback model that hasn't been called at
