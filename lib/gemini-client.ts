@@ -2,7 +2,10 @@ import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const MODEL_FALLBACK_CHAIN = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"];
+// Verified against this project's API key: gemini-2.5-flash and
+// gemini-2.5-flash-lite both return 404 ("no longer available to new users"),
+// even though they still appear in ListModels. Only these two actually serve.
+const MODEL_FALLBACK_CHAIN = ["gemini-3.6-flash", "gemini-flash-latest"];
 
 // Keyed by model name: each model has its own quota bucket, so usage of
 // gemini-2.5-flash must not block a fallback model that hasn't been called at
@@ -102,6 +105,16 @@ function parseRetryDelayMs(err: unknown): number | null {
   return isNaN(seconds) ? null : seconds * 1000;
 }
 
+/**
+ * A model that is unavailable to this key will never become available by
+ * retrying, so these skip straight to the next model in the chain.
+ */
+function isModelUnavailableError(err: unknown): boolean {
+  const gErr = err as GeminiApiError;
+  const status = gErr.error?.code ?? gErr.status;
+  return status === 404 || gErr.error?.status === "NOT_FOUND";
+}
+
 function isRateLimitError(err: unknown): boolean {
   const gErr = err as GeminiApiError;
   const status = gErr.error?.code ?? gErr.status;
@@ -165,10 +178,28 @@ export async function callGeminiJSON<T = unknown>(
       } catch (err: unknown) {
         lastError = err;
 
+        console.error(
+          `[gemini] call failed on ${model}:`,
+          JSON.stringify({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            status: (err as any)?.status,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (err as any)?.message,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            errorBody: (err as any)?.error,
+          })
+        );
+
         // Nothing to retry against: every model shares one window, and waiting
         // it out would exceed the function's budget. Let the route return a 503.
         if (err instanceof Error && err.message === RATE_LIMIT_WINDOW_FULL) {
           throw err;
+        }
+
+        // Retrying a model this key can't use just burns the time budget.
+        if (isModelUnavailableError(err)) {
+          console.log(`[gemini] ${model} unavailable to this key — next model`);
+          break;
         }
 
         if (!isRateLimitError(err)) {

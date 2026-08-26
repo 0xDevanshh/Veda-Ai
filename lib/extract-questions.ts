@@ -27,6 +27,13 @@ function normalize(number: string): string {
 export async function extractQuestions(
   questionPaperImages: string[]
 ): Promise<Question[]> {
+  // Mirrors the log in extract-answers so the two payloads can be compared
+  // side by side in the same request's logs.
+  console.log(
+    `[extract-questions] sending ${questionPaperImages.length} images, lengths: ` +
+      `${questionPaperImages.map((i) => i.length).join(", ")}`
+  );
+
   const raw = await callGeminiJSON(PROMPT, questionPaperImages, SCHEMA_HINT);
 
   if (!Array.isArray(raw)) {

@@ -9,6 +9,10 @@ const JPEG_QUALITY = 0.85;
 // request well inside the serverless function's time budget.
 const MAX_IMAGE_DIMENSION = 1600;
 
+// Any real scanned page encodes to tens of thousands of characters; anything
+// this short means the canvas was blank or mis-sized.
+const MIN_DATA_URL_LENGTH = 1000;
+
 // Worker script is pdfjs-dist/build/pdf.worker.min.mjs, copied into public/
 // so Next's production build doesn't try to minify the ESM worker file itself.
 const WORKER_SRC = "/pdf.worker.min.mjs";
@@ -57,6 +61,21 @@ function exportJpeg(canvas: HTMLCanvasElement): string {
       `Expected a JPEG data URL, got "${dataUrl.slice(0, 20)}..." — cannot export page`
     );
   }
+
+  console.log(
+    `[pdf-to-images] page image: ${dataUrl.slice(0, 30)}... length=${dataUrl.length} ` +
+      `(canvas ${canvas.width}x${canvas.height})`
+  );
+
+  // A blank or zero-sized canvas still encodes to a valid but tiny JPEG, which
+  // Gemini then rejects. Fail here, where the cause is visible, instead.
+  if (dataUrl.length < MIN_DATA_URL_LENGTH) {
+    throw new Error(
+      `Generated page image is suspiciously small/empty — check canvas resize logic ` +
+        `(length=${dataUrl.length}, canvas ${canvas.width}x${canvas.height})`
+    );
+  }
+
   return dataUrl;
 }
 

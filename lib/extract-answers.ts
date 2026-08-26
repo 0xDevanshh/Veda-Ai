@@ -52,6 +52,12 @@ export async function extractAnswers(
   answerSheetImages: string[]
 ): Promise<ExtractedAnswer[]> {
   const prompt = buildPrompt(answerSheetImages.length);
+
+  console.log(
+    `[extract-answers] sending ${answerSheetImages.length} images, lengths: ` +
+      `${answerSheetImages.map((i) => i.length).join(", ")}`
+  );
+
   const raw = await callGeminiJSON(prompt, answerSheetImages, SCHEMA_HINT);
 
   if (!Array.isArray(raw)) {
