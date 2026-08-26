@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const MODEL_FALLBACK_CHAIN = ["gemini-2.0-flash", "gemini-2.5-flash"];
+const MODEL_FALLBACK_CHAIN = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"];
 
 const callTimestamps: number[] = [];
 const MAX_CALLS_PER_WINDOW = 5;
