@@ -4,21 +4,18 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const MODEL_FALLBACK_CHAIN = ["gemini-2.0-flash", "gemini-2.5-flash"];
 
-// Sliding window: only wait when we're actually about to exceed 5 calls/60s.
-// No fixed per-call delay, ever.
 const callTimestamps: number[] = [];
 const MAX_CALLS_PER_WINDOW = 5;
 const WINDOW_MS = 60_000;
 
 async function respectSlidingWindow(): Promise<void> {
   const now = Date.now();
-  // drop timestamps older than the window
   while (callTimestamps.length && now - callTimestamps[0] > WINDOW_MS) {
     callTimestamps.shift();
   }
   if (callTimestamps.length >= MAX_CALLS_PER_WINDOW) {
     const oldest = callTimestamps[0];
-    const waitMs = WINDOW_MS - (now - oldest) + 100; // small safety margin
+    const waitMs = WINDOW_MS - (now - oldest) + 100;
     if (waitMs > 0) {
       console.log(`[gemini] sliding window full — waiting ${(waitMs / 1000).toFixed(1)}s`);
       await new Promise((r) => setTimeout(r, waitMs));
@@ -26,27 +23,48 @@ async function respectSlidingWindow(): Promise<void> {
   }
 }
 
-function parseRetryDelayMs(error: any): number | null {
-  try {
-    const details = error?.error?.details || error?.details;
-    const retryInfo = details?.find((d: any) =>
-      d["@type"]?.includes("RetryInfo")
-    );
-    const raw = retryInfo?.retryDelay; // e.g. "13s" or "1.53s"
-    if (!raw) return null;
-    const seconds = parseFloat(raw.replace("s", ""));
-    return isNaN(seconds) ? null : seconds * 1000;
-  } catch {
-    return null;
-  }
+// --- Minimal shape of a Gemini API error response, just the fields we read ---
+interface GeminiErrorDetail {
+  "@type"?: string;
+  retryDelay?: string;
+}
+
+interface GeminiErrorBody {
+  code?: number;
+  status?: string;
+  details?: GeminiErrorDetail[];
+}
+
+interface GeminiApiError {
+  error?: GeminiErrorBody;
+  status?: number;
+}
+
+function parseRetryDelayMs(err: unknown): number | null {
+  const gErr = err as GeminiApiError;
+  const details = gErr.error?.details;
+  if (!details) return null;
+  const retryInfo = details.find((d) => d["@type"]?.includes("RetryInfo"));
+  const raw = retryInfo?.retryDelay; // e.g. "13s" or "1.53s"
+  if (!raw) return null;
+  const seconds = parseFloat(raw.replace("s", ""));
+  return isNaN(seconds) ? null : seconds * 1000;
+}
+
+function isRateLimitError(err: unknown): boolean {
+  const gErr = err as GeminiApiError;
+  const status = gErr.error?.code ?? gErr.status;
+  return status === 429 || gErr.error?.status === "RESOURCE_EXHAUSTED";
 }
 
 async function callOneModel(
   model: string,
   prompt: string,
   images: string[]
-): Promise<any> {
-  const parts: any[] = [{ text: prompt }];
+): Promise<string> {
+  const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
+    { text: prompt },
+  ];
   for (const img of images) {
     const [meta, data] = img.split(",");
     const mimeType = meta.match(/data:(.*?);base64/)?.[1] || "image/png";
@@ -62,19 +80,17 @@ async function callOneModel(
     config: { responseMimeType: "application/json" },
   });
 
-  return response.text;
+  return response.text ?? "";
 }
 
-export async function callGeminiJSON(
+export async function callGeminiJSON<T = unknown>(
   prompt: string,
   images: string[],
   schemaHint: string
-): Promise<any> {
-  let lastError: any = null;
+): Promise<T> {
+  let lastError: unknown = null;
 
   for (const model of MODEL_FALLBACK_CHAIN) {
-    // Up to 3 short attempts per model — for 429s use real/backoff delay,
-    // for bad JSON use an immediate stricter re-prompt, not a wait.
     let jsonRetries = 0;
     let rateLimitRetries = 0;
     let currentPrompt = prompt;
@@ -83,18 +99,16 @@ export async function callGeminiJSON(
       try {
         const text = await callOneModel(model, currentPrompt, images);
         try {
-          return JSON.parse(text.replace(/```json|```/g, "").trim());
+          return JSON.parse(text.replace(/```json|```/g, "").trim()) as T;
         } catch {
           jsonRetries++;
           currentPrompt = `${prompt}\n\nReturn ONLY valid JSON matching the schema: ${schemaHint}. No markdown fences, no preamble.`;
           continue;
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         lastError = err;
-        const status = err?.error?.code || err?.status;
-        const isRateLimit = status === 429 || err?.error?.status === "RESOURCE_EXHAUSTED";
 
-        if (!isRateLimit) {
+        if (!isRateLimitError(err)) {
           jsonRetries++;
           continue;
         }
