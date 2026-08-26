@@ -2,13 +2,17 @@ import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Verified against this project's API key: gemini-2.5-flash and
-// gemini-2.5-flash-lite both return 404 ("no longer available to new users"),
-// even though they still appear in ListModels. Only these two actually serve.
-// gemini-flash-latest first: it doesn't carry the tight per-day free-tier cap
-// that makes a failed gemini-3.6-flash attempt expensive. 3.6 stays as a real
-// fallback for when flash-latest is rate limited or returns 503.
-const MODEL_FALLBACK_CHAIN = ["gemini-3.6-flash","gemini-flash-latest", "gemini-2.5-flash"];
+// Primary model is gemini-2.5-flash-lite. The rest of the chain is fallback:
+// gemini-3.6-flash and gemini-flash-latest were both verified callable with
+// this project's API key, so a request still completes if the primary fails.
+// Note: a probe on 2026-08-26 had gemini-2.5-flash-lite and gemini-2.5-flash
+// returning 404 "no longer available to new users" for this key, despite both
+// appearing in ListModels — a 404 costs one fast attempt and falls through.
+const MODEL_FALLBACK_CHAIN = [
+  "gemini-2.5-flash-lite",
+  "gemini-3.6-flash",
+  "gemini-flash-latest",
+];
 
 // Keyed by model name: each model has its own quota bucket, so usage of
 // gemini-2.5-flash must not block a fallback model that hasn't been called at
