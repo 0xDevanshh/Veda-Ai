@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
 import clsx from "clsx";
+import { loadCompletedSession } from "@/lib/pending-session";
 import type { MappedAnswer, SessionData } from "@/lib/types";
 
 const BASE_WIDTH = 640;
@@ -44,10 +45,16 @@ export default function ResultView({ sessionId }: ResultViewProps) {
     setSession(null);
     setError(null);
 
-    fetch(`/api/session/${sessionId}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Session not found");
-        return res.json();
+    // Results are assembled client-side now, so look locally first and fall
+    // back to the server store for sessions created by the old single-shot route.
+    loadCompletedSession(sessionId)
+      .catch(() => null)
+      .then((local) => {
+        if (local) return local;
+        return fetch(`/api/session/${sessionId}`).then((res) => {
+          if (!res.ok) throw new Error("Session not found");
+          return res.json() as Promise<SessionData>;
+        });
       })
       .then((data: SessionData) => {
         if (!cancelled) setSession(data);
