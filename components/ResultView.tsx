@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  FileQuestion,
+  Minus,
+  Plus,
+} from "lucide-react";
 import clsx from "clsx";
 import { loadCompletedSession } from "@/lib/pending-session";
 import type { MappedAnswer, SessionData } from "@/lib/types";
@@ -36,51 +43,88 @@ interface ResultViewProps {
   sessionId: string;
 }
 
+type LoadState =
+  | { status: "loading" }
+  | { status: "ready"; session: SessionData }
+  | { status: "missing" }
+  | { status: "error" };
+
 export default function ResultView({ sessionId }: ResultViewProps) {
-  const [session, setSession] = useState<SessionData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
     let cancelled = false;
-    setSession(null);
-    setError(null);
+    setState({ status: "loading" });
 
-    // Results are assembled client-side now, so look locally first and fall
-    // back to the server store for sessions created by the old single-shot route.
-    loadCompletedSession(sessionId)
-      .catch(() => null)
-      .then((local) => {
-        if (local) return local;
-        return fetch(`/api/session/${sessionId}`).then((res) => {
-          if (!res.ok) throw new Error("Session not found");
-          return res.json() as Promise<SessionData>;
-        });
-      })
-      .then((data: SessionData) => {
-        if (!cancelled) setSession(data);
-      })
-      .catch(() => {
-        if (!cancelled) setError("Could not load this result. Please try again.");
-      });
+    async function load(): Promise<LoadState> {
+      // Results are assembled client-side, so look locally first.
+      let local: SessionData | null = null;
+      try {
+        local = await loadCompletedSession(sessionId);
+      } catch {
+        // IndexedDB unavailable (private mode, blocked storage) — fall through
+        // to the server store rather than treating this as a missing session.
+        local = null;
+      }
+      if (local) return { status: "ready", session: local };
+
+      // Fall back to the server store for sessions made by the old single-shot route.
+      try {
+        const response = await fetch(`/api/session/${sessionId}`);
+        if (response.status === 404) return { status: "missing" };
+        if (!response.ok) return { status: "error" };
+        return { status: "ready", session: await response.json() };
+      } catch {
+        return { status: "error" };
+      }
+    }
+
+    load().then((next) => {
+      if (!cancelled) setState(next);
+    });
 
     return () => {
       cancelled = true;
     };
   }, [sessionId]);
 
-  if (error) {
+  if (state.status === "loading") return <ResultSkeleton />;
+  if (state.status === "missing") return <SessionNotFound />;
+  if (state.status === "error") {
     return (
       <div className="flex h-full items-center justify-center p-4">
-        <p className="text-sm text-red-500">{error}</p>
+        <p className="text-sm text-red-500">
+          Could not load this result. Please try again.
+        </p>
       </div>
     );
   }
 
-  if (!session) {
-    return <ResultSkeleton />;
-  }
+  return <ResultViewContent session={state.session} />;
+}
 
-  return <ResultViewContent session={session} />;
+function SessionNotFound() {
+  return (
+    <div className="flex h-full items-center justify-center p-6">
+      <div className="flex w-full max-w-[440px] flex-col items-center rounded-xl bg-white p-10 text-center shadow-sm">
+        <div className="relative flex h-16 w-16 items-center justify-center">
+          <div className="absolute h-16 w-16 rounded-full bg-gray-100" />
+          <FileQuestion size={30} className="relative text-gray-400" />
+        </div>
+        <p className="mt-6 text-xl font-bold text-gray-900">Session not found</p>
+        <p className="mt-2 text-sm text-gray-500">
+          This result isn&apos;t available — it may have expired, or it was graded
+          in a different browser.
+        </p>
+        <a
+          href="/exams/upload"
+          className="mt-6 rounded-full bg-black px-6 py-2.5 text-sm font-medium text-white hover:bg-gray-800"
+        >
+          Upload new files
+        </a>
+      </div>
+    </div>
+  );
 }
 
 function ResultSkeleton() {
