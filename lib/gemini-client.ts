@@ -4,9 +4,21 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const MODEL_FALLBACK_CHAIN = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"];
 
-const callTimestamps: number[] = [];
+// Keyed by model name: each model has its own quota bucket, so usage of
+// gemini-2.5-flash must not block a fallback model that hasn't been called at
+// all in this window.
+const callTimestampsByModel = new Map<string, number[]>();
 const MAX_CALLS_PER_WINDOW = 5;
 const WINDOW_MS = 60_000;
+
+function timestampsFor(model: string): number[] {
+  let timestamps = callTimestampsByModel.get(model);
+  if (!timestamps) {
+    timestamps = [];
+    callTimestampsByModel.set(model, timestamps);
+  }
+  return timestamps;
+}
 
 /** Hard ceiling on a single Gemini request, well inside the function's 60s limit. */
 const CALL_TIMEOUT_MS = 25_000;
@@ -28,8 +40,17 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
     ),
   ]);
 
-async function respectSlidingWindow(): Promise<void> {
+async function respectSlidingWindow(model: string): Promise<void> {
+  const callTimestamps = timestampsFor(model);
   const now = Date.now();
+
+  console.log(
+    `[gemini] window check for ${model} — now=${new Date(now).toISOString()}, ` +
+      `${callTimestamps.length} recorded call(s): [${callTimestamps
+        .map((t) => `${new Date(t).toISOString()} (${((now - t) / 1000).toFixed(1)}s ago)`)
+        .join(", ")}]`
+  );
+
   while (callTimestamps.length && now - callTimestamps[0] > WINDOW_MS) {
     callTimestamps.shift();
   }
@@ -38,14 +59,16 @@ async function respectSlidingWindow(): Promise<void> {
     const waitMs = WINDOW_MS - (now - oldest) + 100;
     if (waitMs > MAX_WINDOW_WAIT_MS) {
       console.log(
-        `[gemini] sliding window full — would need ${(waitMs / 1000).toFixed(
+        `[gemini] sliding window full for ${model} — would need ${(waitMs / 1000).toFixed(
           1
         )}s, over the ${MAX_WINDOW_WAIT_MS / 1000}s cap; failing fast`
       );
       throw new Error(RATE_LIMIT_WINDOW_FULL);
     }
     if (waitMs > 0) {
-      console.log(`[gemini] sliding window full — waiting ${(waitMs / 1000).toFixed(1)}s`);
+      console.log(
+        `[gemini] sliding window full for ${model} — waiting ${(waitMs / 1000).toFixed(1)}s`
+      );
       await new Promise((r) => setTimeout(r, waitMs));
     }
   }
@@ -99,8 +122,11 @@ async function callOneModel(
     parts.push({ inlineData: { mimeType, data } });
   }
 
-  await respectSlidingWindow();
-  callTimestamps.push(Date.now());
+  await respectSlidingWindow(model);
+
+  // Recorded once, immediately before the one and only network call this
+  // function makes — so the count tracks real Gemini requests for this model.
+  timestampsFor(model).push(Date.now());
 
   const response = await withTimeout(
     ai.models.generateContent({
