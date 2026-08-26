@@ -9,7 +9,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 // returning 404 "no longer available to new users" for this key, despite both
 // appearing in ListModels — a 404 costs one fast attempt and falls through.
 const MODEL_FALLBACK_CHAIN = [
-  "gemini-2.5-flash-lite",
+  "gemini-3.5-flash-lite",
   "gemini-3.6-flash",
   "gemini-flash-latest",
 ];
